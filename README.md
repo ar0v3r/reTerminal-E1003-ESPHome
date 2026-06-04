@@ -60,7 +60,7 @@ Mounts to a fridge (or any steel surface) using:
 
 **Sleep current:** below 100µA — undetectable with current measurement setup (BM235 multimeter reads 0.00 on both mA and µA ranges)  
 **Awake idle:** ~185mA; wake cycle ~20s  
-**4h interval estimated life:** 60+ days (projected from early drain test data; ongoing)
+**4h interval estimated life:** 200+ days (projected from early drain test data; ongoing)
 
 The critical fix was using `gpio_hold_en()` + `gpio_deep_sleep_hold_en()` to latch GPIO states into the sleep domain. Without holds, bare `digitalWrite()` calls are silently discarded at sleep entry on the ESP32-S3, leaving GPIO39 (SD) and GPIO48 (touch) floating HIGH and burning ~4.95mA.
 
