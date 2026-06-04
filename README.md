@@ -16,6 +16,10 @@ This project was built with inspiration from several community projects (credite
 - Wake on button press (GPIO4, center white button)
 - OTA-friendly "Hold Awake" button in Home Assistant
 
+<p align="center">
+  <img src="images/example.jpeg" width="600" alt="reTerminal E1003 Calendar Dashboard">
+</p>
+
 ## Hardware
 
 | Component | Details |
