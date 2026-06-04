@@ -1,0 +1,83 @@
+# Home Assistant automations required for the reTerminal E1003 Calendar Dashboard
+# Add these entries to your automations.yaml (or merge via the UI).
+
+- alias: "Weather Updating"
+  description: "Fetches daily forecast and writes it to input_text helpers via python_script"
+  triggers:
+    - hours: "2"
+      trigger: time_pattern
+    - trigger: homeassistant
+      event: start
+  conditions: []
+  actions:
+    - delay:
+        hours: 0
+        minutes: 2
+        seconds: 0
+        milliseconds: 0
+    - data:
+        type: daily
+      response_variable: weather_forecast_response
+      action: weather.get_forecasts
+      target:
+        entity_id: weather.home   # replace with your weather entity
+    - data:
+        forecast_data: "{{ weather_forecast_response }}"
+      action: python_script.update_weather_forecast
+  mode: single
+
+- alias: "Sync Calendar Events to ESPHome"
+  description: "Polls calendar every 15 min and writes events 2-5 to input_text helpers"
+  triggers:
+    - platform: time_pattern
+      minutes: "/15"
+    - platform: homeassistant
+      event: start
+  actions:
+    - action: calendar.get_events
+      target:
+        entity_id: calendar.your_calendar   # replace with your calendar entity
+      data:
+        duration:
+          hours: 336
+      response_variable: events
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.cal_event_2_title
+      data:
+        value: "{{ events['calendar.your_calendar']['events'][1].summary if events['calendar.your_calendar']['events'] | length > 1 else '' }}"
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.cal_event_2_start
+      data:
+        value: "{{ (events['calendar.your_calendar']['events'][1].start | as_datetime | as_local).isoformat() if events['calendar.your_calendar']['events'] | length > 1 else '' }}"
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.cal_event_3_title
+      data:
+        value: "{{ events['calendar.your_calendar']['events'][2].summary if events['calendar.your_calendar']['events'] | length > 2 else '' }}"
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.cal_event_3_start
+      data:
+        value: "{{ (events['calendar.your_calendar']['events'][2].start | as_datetime | as_local).isoformat() if events['calendar.your_calendar']['events'] | length > 2 else '' }}"
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.cal_event_4_title
+      data:
+        value: "{{ events['calendar.your_calendar']['events'][3].summary if events['calendar.your_calendar']['events'] | length > 3 else '' }}"
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.cal_event_4_start
+      data:
+        value: "{{ (events['calendar.your_calendar']['events'][3].start | as_datetime | as_local).isoformat() if events['calendar.your_calendar']['events'] | length > 3 else '' }}"
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.cal_event_5_title
+      data:
+        value: "{{ events['calendar.your_calendar']['events'][4].summary if events['calendar.your_calendar']['events'] | length > 4 else '' }}"
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.cal_event_5_start
+      data:
+        value: "{{ (events['calendar.your_calendar']['events'][4].start | as_datetime | as_local).isoformat() if events['calendar.your_calendar']['events'] | length > 4 else '' }}"

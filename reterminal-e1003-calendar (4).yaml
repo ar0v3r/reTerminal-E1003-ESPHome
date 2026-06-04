@@ -1,0 +1,585 @@
+# ============================================================
+#  reTerminal E1003 – Google Calendar Dashboard
+#  Hardware: Seeed reTerminal E1003 (ESP32-S3) + IT8951 e-Paper
+#            (1872x1404, 10.3-inch) + SHT4x + physical buttons
+#
+#  Deep-sleep battery build — 4h wake interval
+#  Measured sleep current: below BM235 µA floor (<1mA)
+#  Awake idle current: ~185mA; wake cycle ~20s
+#
+#  Key hardware notes (E1003 schematic v1.0):
+#    GPIO40 = VBAT_EN (battery ADC divider enable)
+#    GPIO21 = ITE_VCC_EN — managed by koosoli driver, do not redefine
+#    GPIO39 = SD_EN, GPIO48 = TOUCH_RES (active-low GT911)
+#    GPIO11 = EPD_Drive_EN, GPIO38 = PDM_EN
+#    GPIO45 = BUZZER_EN, GPIO16 = USER_LED (active-LOW, excluded from hold)
+#    GPIO4  = center white button (wake source), ext pull-up R37 10K on schematic
+#
+#  Deep-sleep GPIO hold:
+#    Non-RTC pins (>21) require gpio_deep_sleep_hold_en() to survive sleep.
+#    Without holds, bare digitalWrite() calls are silently discarded at
+#    sleep entry — GPIO39 (SD) and GPIO48 (touch) float HIGH, keeping
+#    subsystems live and burning ~4.95mA during sleep.
+#    GPIO16 is intentionally excluded from the hold set (latching LOW
+#    drives the green LED on via Q4 transistor).
+#
+#  Wake: ext1 ANY_LOW on GPIO4. gpio_deep_sleep_hold_en() breaks ext0;
+#        ext1 is unaffected. External R37 provides the pull-up.
+#
+#  OTA procedure: wake device via GPIO4, then activate "Hold Awake (OTA)"
+#                 in HA within the brief awake window.
+#
+#  Based on: https://github.com/Incipiens/Adam-Home-Assistant-Snippets
+#             /tree/main/ESPHome/reTerminal%20E1003%20-%20Touch%20controls
+# ============================================================
+
+substitutions:
+  device_name: reterminal-e1003-calendar
+  friendly_name: reTerminal E1003 Calendar Dashboard
+  calendar_entity: calendar.your_calendar   # replace with your calendar entity
+
+# ── Core ESPHome identity ────────────────────────────────────
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  includes:
+    - <driver/rtc_io.h>
+  on_boot:
+    # Priority 900: release all gpio_hold latches BEFORE the IT8951 driver's
+    # HARDWARE-priority (800) setup() runs power_cycle_(). The driver does a
+    # LOW->HIGH cycle on GPIO11 and GPIO21 on every boot — releasing the holds
+    # first lets it re-power the display rail cleanly.
+    - priority: 900
+      then:
+        - lambda: |-
+            gpio_hold_dis(GPIO_NUM_11);
+            gpio_hold_dis(GPIO_NUM_21);
+            gpio_hold_dis(GPIO_NUM_16);
+            gpio_hold_dis(GPIO_NUM_38);
+            gpio_hold_dis(GPIO_NUM_39);
+            gpio_hold_dis(GPIO_NUM_45);
+            gpio_hold_dis(GPIO_NUM_48);
+    # Priority 600: enable battery voltage measurement rail
+    - priority: 600
+      then:
+        - output.turn_on: bsp_battery_enable
+
+# ── ESP32-S3 ─────────────────────────────────────────────────
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+psram:
+  mode: octal
+
+# ── Deep sleep ───────────────────────────────────────────────
+# run_duration: safety net — sleeps after 60s if HA never connects
+# ext1 required because gpio_deep_sleep_hold_en() breaks ext0 wake.
+# ANY_LOW is correct for S3 (ALL_LOW is rejected by ESPHome validator).
+deep_sleep:
+  id: deep_sleep_control
+  sleep_duration: 4h
+  run_duration: 60s
+  esp32_ext1_wakeup:
+    pins:
+      - number: GPIO4
+        allow_other_uses: true
+    mode: ANY_LOW
+
+# ── E1003 custom display driver ─────────────────────────────
+external_components:
+  - source:
+      type: git
+      url: https://github.com/koosoli/Seeed-10.3-inch-IT8951-ESPHome-Drivers
+      ref: main
+    components: [it8951_reterminal_e1003]
+
+# ── I2C bus ──────────────────────────────────────────────────
+i2c:
+  - sda: GPIO19
+    scl: GPIO20
+    scan: true
+    id: bus_a
+
+# ── Battery enable (GPIO40 on E1003) ─────────────────────────
+output:
+  - platform: gpio
+    pin: GPIO40
+    id: bsp_battery_enable
+
+# ── SPI bus (IT8951 e-Paper controller) ─────────────────────
+spi:
+  - id: it8951_spi
+    clk_pin: GPIO7
+    mosi_pin: GPIO9
+    miso_pin: GPIO8
+
+# ── Scripts ──────────────────────────────────────────────────
+script:
+  - id: wake_cycle
+    mode: single
+    then:
+      - delay: 6s
+      - component.update: battery_voltage
+      - component.update: sht4x_sensor
+      - delay: 1s
+      - component.update: battery_level
+      - component.update: epaper_display
+      - delay: 3s
+      - logger.log: "Render complete -> entering deep sleep"
+      - output.turn_off: bsp_battery_enable
+      - lambda: |-
+          // Disable I2C pins to prevent leakage during sleep
+          gpio_set_direction(GPIO_NUM_19, GPIO_MODE_DISABLE);
+          gpio_set_direction(GPIO_NUM_20, GPIO_MODE_DISABLE);
+
+          // RTC-capable pins (<=GPIO21): held via RTC domain
+          pinMode(11, OUTPUT); digitalWrite(11, LOW); gpio_hold_en(GPIO_NUM_11);
+          pinMode(21, OUTPUT); digitalWrite(21, LOW); gpio_hold_en(GPIO_NUM_21);
+
+          // Non-RTC pins (>GPIO21): require gpio_deep_sleep_hold_en()
+          // GPIO16 (USER_LED) intentionally excluded — latching LOW keeps
+          // the green LED on during sleep (active-low via Q4 transistor)
+          pinMode(38, OUTPUT); digitalWrite(38, LOW); gpio_hold_en(GPIO_NUM_38);
+          pinMode(39, OUTPUT); digitalWrite(39, LOW); gpio_hold_en(GPIO_NUM_39);
+          pinMode(45, OUTPUT); digitalWrite(45, LOW); gpio_hold_en(GPIO_NUM_45);
+          pinMode(48, OUTPUT); digitalWrite(48, LOW); gpio_hold_en(GPIO_NUM_48);
+
+          // Arm digital hold domain for non-RTC pins
+          gpio_deep_sleep_hold_en();
+
+          // Keep RTC_PERIPH powered for ext1 GPIO monitoring;
+          // belt-and-suspenders pull-up alongside external R37
+          esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+          rtc_gpio_pullup_en(GPIO_NUM_4);
+          rtc_gpio_pulldown_dis(GPIO_NUM_4);
+      - deep_sleep.enter: deep_sleep_control
+
+# ── Fonts ───────────────────────────────────────────────────
+font:
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 26
+    glyphs: "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ °"
+  - file: "gfonts://Roboto"
+    id: font_med
+    size: 36
+    glyphs: "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ °"
+  - file: "gfonts://Roboto@700"
+    id: font_bold
+    size: 52
+    glyphs: "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ °"
+  - file: "gfonts://Roboto@700"
+    id: font_header
+    size: 48
+    glyphs: "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ °"
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: mdi_weather
+    size: 80
+    glyphs: ["󰖔", "󰖐", "󰖑", "󰖒", "󰖓", "󰙾", "󰖕", "󰖖", "󰖗", "󰖘", "󰙿", "󰖙", "󰖝", "󰖞", "󰋖"]
+
+# ── HTTP ─────────────────────────────────────────────────────
+http_request:
+  verify_ssl: false
+  timeout: 10s
+
+# ── Time ─────────────────────────────────────────────────────
+time:
+  - platform: homeassistant
+    id: ha_time
+
+# ── Calendar sensors ─────────────────────────────────────────
+text_sensor:
+  - platform: homeassistant
+    id: cal_e1_title
+    entity_id: ${calendar_entity}
+    attribute: message
+
+  - platform: homeassistant
+    id: cal_e1_start
+    entity_id: ${calendar_entity}
+    attribute: start_time
+
+  - platform: homeassistant
+    id: cal_e1_end
+    entity_id: ${calendar_entity}
+    attribute: end_time
+
+  - platform: homeassistant
+    id: cal_e1_location
+    entity_id: ${calendar_entity}
+    attribute: location
+
+  - platform: homeassistant
+    id: cal_e2_title
+    entity_id: sensor.calendar_event_2_title
+
+  - platform: homeassistant
+    id: cal_e2_start
+    entity_id: sensor.calendar_event_2_start
+
+  - platform: homeassistant
+    id: cal_e3_title
+    entity_id: sensor.calendar_event_3_title
+
+  - platform: homeassistant
+    id: cal_e3_start
+    entity_id: sensor.calendar_event_3_start
+
+  - platform: homeassistant
+    id: cal_e4_title
+    entity_id: sensor.calendar_event_4_title
+
+  - platform: homeassistant
+    id: cal_e4_start
+    entity_id: sensor.calendar_event_4_start
+
+  - platform: homeassistant
+    id: cal_e5_title
+    entity_id: sensor.calendar_event_5_title
+
+  - platform: homeassistant
+    id: cal_e5_start
+    entity_id: sensor.calendar_event_5_start
+
+  - platform: homeassistant
+    entity_id: sensor.day_1_forecast_condition
+    id: wx_day1_condition
+
+  - platform: homeassistant
+    entity_id: sensor.day_2_forecast_condition
+    id: wx_day2_condition
+
+  - platform: homeassistant
+    entity_id: input_text.weather_forecast_day_1_temperature
+    id: wx_day1_temp
+
+  - platform: homeassistant
+    entity_id: input_text.weather_forecast_day_2_temperature
+    id: wx_day2_temp
+
+# ── Binary sensors ───────────────────────────────────────────
+binary_sensor:
+  - platform: homeassistant
+    id: cal_event_active
+    entity_id: ${calendar_entity}
+
+  - platform: gpio
+    pin:
+      number: GPIO3
+      mode: INPUT_PULLUP
+      inverted: true
+    id: button_1
+    name: "Button 1 (Green Left)"
+    on_press:
+      - component.update: epaper_display
+
+  - platform: gpio
+    pin:
+      number: GPIO4
+      mode: INPUT_PULLUP
+      inverted: true
+      allow_other_uses: true
+    id: button_2
+    name: "Button 2 (Center White) Wake"
+    on_press:
+      - component.update: epaper_display
+
+  - platform: gpio
+    pin:
+      number: GPIO5
+      mode: INPUT_PULLUP
+      inverted: true
+    id: button_3
+    name: "Button 3 (Left White)"
+    on_press:
+      - component.update: epaper_display
+
+# ── Buttons (HA) ─────────────────────────────────────────────
+button:
+  - platform: template
+    name: "Refresh Display"
+    on_press:
+      - component.update: epaper_display
+
+  - platform: template
+    name: "Hold Awake (OTA)"
+    on_press:
+      - script.stop: wake_cycle
+      - deep_sleep.prevent: deep_sleep_control
+
+  - platform: template
+    name: "Sleep Now"
+    on_press:
+      - deep_sleep.enter: deep_sleep_control
+
+# ── Sensors ──────────────────────────────────────────────────
+sensor:
+  - platform: adc
+    pin: GPIO1
+    name: "Battery Voltage"
+    id: battery_voltage
+    update_interval: 60s
+    attenuation: 12db
+    filters:
+      - multiply: 2.0
+
+  # Battery level calibration curve sourced from Seeed Studio's reTerminal E10xx
+  # ESPHome advanced guide:
+  # https://wiki.seeedstudio.com/reterminal_e10xx_with_esphome_advanced/
+  - platform: template
+    name: "Battery Level"
+    id: battery_level
+    unit_of_measurement: "%"
+    icon: "mdi:battery"
+    device_class: battery
+    state_class: measurement
+    lambda: 'return id(battery_voltage).state;'
+    update_interval: 60s
+    filters:
+      - calibrate_linear:
+          - 4.15 -> 100.0
+          - 3.96 -> 90.0
+          - 3.91 -> 80.0
+          - 3.85 -> 70.0
+          - 3.80 -> 60.0
+          - 3.75 -> 50.0
+          - 3.68 -> 40.0
+          - 3.58 -> 30.0
+          - 3.49 -> 20.0
+          - 3.41 -> 10.0
+          - 3.30 -> 5.0
+          - 3.27 -> 0.0
+      - clamp:
+          min_value: 0
+          max_value: 100
+
+  - platform: sht4x
+    id: sht4x_sensor
+    temperature:
+      name: "Temperature"
+      id: sht4x_temperature
+    humidity:
+      name: "Humidity"
+      id: sht4x_humidity
+    address: 0x44
+    update_interval: 60s
+
+# ── Display ──────────────────────────────────────────────────
+display:
+  - platform: it8951_reterminal_e1003
+    id: epaper_display
+    vcom: 1400
+    update_interval: never
+    lambda: |-
+      const auto WHITE = Color(255, 255, 255);
+      const auto BLACK = Color(0, 0, 0);
+
+      it.fill(WHITE);
+
+      // ── Header bar ───────────────────────────────────────────
+      it.filled_rectangle(0, 0, 1872, 90, BLACK);
+      it.print(40, 22, id(font_header), WHITE, "Google Calendar");
+
+      auto now = id(ha_time).now();
+      const char* day_names[] = {"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"};
+      it.print(936, 28, id(font_med), WHITE, TextAlign::TOP_CENTER, day_names[now.day_of_week - 1]);
+
+      char date_buf[32];
+      snprintf(date_buf, sizeof(date_buf), "%04d-%02d-%02d  %02d:%02d",
+               now.year, now.month, now.day_of_month,
+               now.hour, now.minute);
+      it.print(1832, 28, id(font_med), WHITE, TextAlign::TOP_RIGHT, date_buf);
+
+      // ── 12-hour time helper ───────────────────────────────────
+      auto to12h = [](const std::string &hhmm) -> std::string {
+        int h = atoi(hhmm.substr(0, 2).c_str());
+        int m = atoi(hhmm.substr(3, 2).c_str());
+        const char* ampm = h >= 12 ? "PM" : "AM";
+        if (h == 0) h = 12;
+        else if (h > 12) h -= 12;
+        char buf[12];
+        snprintf(buf, sizeof(buf), "%d:%02d %s", h, m, ampm);
+        return std::string(buf);
+      };
+
+      // ── "NOW" / "NEXT EVENT" section ─────────────────────────
+      int y = 110;
+      bool is_active = id(cal_event_active).state;
+
+      if (is_active) {
+        it.filled_rectangle(0, y, 1872, 350, BLACK);
+        it.print(40, y + 14, id(font_small), WHITE, "HAPPENING NOW");
+      } else {
+        it.rectangle(0, y, 1872, 350, BLACK);
+        it.print(40, y + 14, id(font_small), BLACK, "NEXT EVENT");
+      }
+
+      Color fg1 = is_active ? WHITE : BLACK;
+
+      std::string e1_title = id(cal_e1_title).state;
+      if (e1_title.empty() || e1_title == "unknown") e1_title = "No upcoming events";
+      if (e1_title.length() > 44) e1_title = e1_title.substr(0, 41) + "...";
+      it.printf(40, y + 60, id(font_bold), fg1, "%s", e1_title.c_str());
+
+      std::string e1_start_raw = id(cal_e1_start).state;
+      std::string e1_end_raw   = id(cal_e1_end).state;
+      std::string e1_date      = "";
+      std::string e1_start     = "";
+      std::string e1_end       = "";
+      std::string e1_day_name  = "";
+
+      if (e1_start_raw.length() >= 10) e1_date = e1_start_raw.substr(0, 10);
+      if (e1_start_raw.length() >= 16) e1_start = to12h(e1_start_raw.substr(11, 5));
+      else e1_start = "All Day";
+      if (e1_end_raw.length() >= 16) e1_end = to12h(e1_end_raw.substr(11, 5));
+
+      if (e1_date.length() == 10) {
+        int y2 = atoi(e1_date.substr(0, 4).c_str());
+        int m2 = atoi(e1_date.substr(5, 2).c_str());
+        int d2 = atoi(e1_date.substr(8, 2).c_str());
+        if (m2 < 3) { m2 += 12; y2--; }
+        int k = y2 % 100, j = y2 / 100;
+        int dow = (d2 + (13*(m2+1))/5 + k + k/4 + j/4 + 5*j) % 7;
+        const char* days[] = {"Saturday","Sunday","Monday","Tuesday","Wednesday","Thursday","Friday"};
+        e1_day_name = days[dow];
+      }
+
+      if (e1_end.empty()) {
+        it.printf(40, y + 150, id(font_med), fg1, "%s      %s  %s",
+                  e1_start.c_str(), e1_day_name.c_str(), e1_date.c_str());
+      } else {
+        it.printf(40, y + 150, id(font_med), fg1, "%s  -  %s      %s  %s",
+                  e1_start.c_str(), e1_end.c_str(), e1_day_name.c_str(), e1_date.c_str());
+      }
+
+      std::string e1_loc = id(cal_e1_location).state;
+      if (!e1_loc.empty() && e1_loc != "unknown") {
+        std::replace(e1_loc.begin(), e1_loc.end(), '\n', ' ');
+        if (e1_loc.length() > 60) e1_loc = e1_loc.substr(0, 57) + "...";
+        it.printf(40, y + 210, id(font_small), fg1, "@ %s", e1_loc.c_str());
+      }
+
+      // ── Upcoming events list ─────────────────────────────────
+      int list_y = 510;
+      it.print(40, list_y - 40, id(font_small), BLACK, "UPCOMING");
+      it.line(40, list_y - 8, 1832, list_y - 8, BLACK);
+
+      auto draw_event_row = [&](int row_y, const std::string &title, const std::string &start_raw) {
+        if (title.empty() || title == "unavailable" || title == "unknown") return;
+        it.line(40, row_y + 118, 1832, row_y + 118, BLACK);
+
+        std::string t = title;
+        if (t.length() > 50) t = t.substr(0, 47) + "...";
+
+        std::string date = "";
+        std::string time_str = "";
+        std::string day_name = "";
+
+        if (start_raw.length() >= 10) date = start_raw.substr(0, 10);
+        if (start_raw.length() >= 16) {
+          std::string hhmm = start_raw.substr(11, 5);
+          int h = atoi(hhmm.substr(0, 2).c_str());
+          int m = atoi(hhmm.substr(3, 2).c_str());
+          const char* ampm = h >= 12 ? "PM" : "AM";
+          if (h == 0) h = 12;
+          else if (h > 12) h -= 12;
+          char tbuf[12];
+          snprintf(tbuf, sizeof(tbuf), "%d:%02d %s", h, m, ampm);
+          time_str = std::string(tbuf);
+        }
+
+        if (date.length() == 10) {
+          int y3 = atoi(date.substr(0, 4).c_str());
+          int m3 = atoi(date.substr(5, 2).c_str());
+          int d3 = atoi(date.substr(8, 2).c_str());
+          if (m3 < 3) { m3 += 12; y3--; }
+          int k = y3 % 100, j = y3 / 100;
+          int dow = (d3 + (13*(m3+1))/5 + k + k/4 + j/4 + 5*j) % 7;
+          const char* days[] = {"Sat","Sun","Mon","Tue","Wed","Thu","Fri"};
+          day_name = days[dow];
+        }
+
+        std::string display_time = date;
+        if (!time_str.empty()) display_time = time_str + "  " + date;
+
+        it.printf(40, row_y + 10, id(font_med), BLACK, "%s", t.c_str());
+        it.printf(1832, row_y + 10, id(font_small), BLACK, TextAlign::TOP_RIGHT, "%s", display_time.c_str());
+        if (!day_name.empty()) {
+          it.printf(1832, row_y + 45, id(font_small), BLACK, TextAlign::TOP_RIGHT, "%s", day_name.c_str());
+        }
+      };
+
+      draw_event_row(list_y,       id(cal_e2_title).state, id(cal_e2_start).state);
+      draw_event_row(list_y + 150, id(cal_e3_title).state, id(cal_e3_start).state);
+      draw_event_row(list_y + 300, id(cal_e4_title).state, id(cal_e4_start).state);
+      draw_event_row(list_y + 450, id(cal_e5_title).state, id(cal_e5_start).state);
+
+      // ── Weather forecast ─────────────────────────────────────
+      it.line(40, 1100, 1832, 1100, BLACK);
+      it.print(40, 1106, id(font_small), BLACK, "FORECAST");
+
+      auto wx_icon = [](const std::string &c) -> const char* {
+        if (c == "clear-night")     return "󰖔";
+        if (c == "cloudy")          return "󰖐";
+        if (c == "fog")             return "󰖑";
+        if (c == "hail")            return "󰖒";
+        if (c == "lightning")       return "󰖓";
+        if (c == "lightning-rainy") return "󰙾";
+        if (c == "partlycloudy")    return "󰖕";
+        if (c == "pouring")         return "󰖖";
+        if (c == "rainy")           return "󰖗";
+        if (c == "snowy")           return "󰖘";
+        if (c == "snowy-rainy")     return "󰙿";
+        if (c == "sunny")           return "󰖙";
+        if (c == "windy")           return "󰖝";
+        if (c == "windy-variant")   return "󰖞";
+        return "󰋖";
+      };
+
+      it.print (450, 1110, id(font_small), BLACK, TextAlign::TOP_CENTER, "Today");
+      it.print (450, 1133, id(mdi_weather), BLACK, TextAlign::TOP_CENTER,
+                wx_icon(id(wx_day1_condition).state));
+      it.printf(450, 1220, id(font_med), BLACK, TextAlign::TOP_CENTER,
+                "%s", id(wx_day1_temp).state.c_str());
+
+      it.line(936, 1106, 936, 1246, BLACK);
+
+      it.print (1380, 1110, id(font_small), BLACK, TextAlign::TOP_CENTER, "Tomorrow");
+      it.print (1380, 1133, id(mdi_weather), BLACK, TextAlign::TOP_CENTER,
+                wx_icon(id(wx_day2_condition).state));
+      it.printf(1380, 1220, id(font_med), BLACK, TextAlign::TOP_CENTER,
+                "%s", id(wx_day2_temp).state.c_str());
+
+      // ── Footer ───────────────────────────────────────────────
+      it.line(40, 1280, 1832, 1280, BLACK);
+      it.print(40, 1295, id(font_small), BLACK, "reTerminal E1003  -  Calendar Dashboard");
+      it.printf(700, 1295, id(font_small), BLACK, "Battery: %.0f%%", id(battery_level).state);
+      it.printf(700, 1325, id(font_small), BLACK, "Temp: %.1f°F  Humidity: %.0f%%",
+                id(sht4x_temperature).state * 9.0/5.0 + 32,
+                id(sht4x_humidity).state);
+
+# ── Connectivity ─────────────────────────────────────────────
+logger:
+
+api:
+  encryption:
+    key: !secret api_key
+  on_client_connected:
+    - script.execute: wake_cycle
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+  fast_connect: true
+  ap:
+    ssid: "E1003 Fallback Hotspot"
+    password: !secret ap_password
+
+captive_portal:

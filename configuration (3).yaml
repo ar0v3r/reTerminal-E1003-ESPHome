@@ -1,0 +1,155 @@
+# Home Assistant configuration snippets required for the reTerminal E1003 Calendar Dashboard.
+# These sections belong in your configuration.yaml (merge with existing content).
+# Credentials (influxdb, API keys, etc.) belong in secrets.yaml — not shown here.
+
+python_script:
+
+# Weather forecast template sensors (populated by the "Weather Updating" automation)
+template: !include Forecast.yaml   # or inline the template block below your existing templates
+
+# input_text helpers — bridge calendar/weather data to ESPHome sensors
+input_text:
+  # Weather forecast
+  weather_forecast_day_1_condition:
+    name: "Day 1 Forecast Condition"
+    initial: "unavailable"
+    max: 100
+  weather_forecast_day_1_temperature:
+    name: "Day 1 Forecast Temperature"
+    initial: "unavailable"
+    max: 100
+  weather_forecast_day_1_datetime:
+    name: "Day 1 Forecast Datetime"
+    initial: "unavailable"
+    max: 100
+
+  weather_forecast_day_2_condition:
+    name: "Day 2 Forecast Condition"
+    initial: "unavailable"
+    max: 100
+  weather_forecast_day_2_temperature:
+    name: "Day 2 Forecast Temperature"
+    initial: "unavailable"
+    max: 100
+  weather_forecast_day_2_datetime:
+    name: "Day 2 Forecast Datetime"
+    initial: "unavailable"
+    max: 100
+
+  weather_forecast_day_3_condition:
+    name: "Day 3 Forecast Condition"
+    initial: "unavailable"
+    max: 100
+  weather_forecast_day_3_temperature:
+    name: "Day 3 Forecast Temperature"
+    initial: "unavailable"
+    max: 100
+  weather_forecast_day_3_datetime:
+    name: "Day 3 Forecast Datetime"
+    initial: "unavailable"
+    max: 100
+
+  weather_forecast_day_4_condition:
+    name: "Day 4 Forecast Condition"
+    initial: "unavailable"
+    max: 100
+  weather_forecast_day_4_temperature:
+    name: "Day 4 Forecast Temperature"
+    initial: "unavailable"
+    max: 100
+  weather_forecast_day_4_datetime:
+    name: "Day 4 Forecast Datetime"
+    initial: "unavailable"
+    max: 100
+
+  weather_forecast_day_5_condition:
+    name: "Day 5 Forecast Condition"
+    initial: "unavailable"
+    max: 100
+  weather_forecast_day_5_temperature:
+    name: "Day 5 Forecast Temperature"
+    initial: "unavailable"
+    max: 100
+  weather_forecast_day_5_datetime:
+    name: "Day 5 Forecast Datetime"
+    initial: "unavailable"
+    max: 100
+
+  # Calendar events 2-5 (event 1 comes directly from the calendar entity attribute)
+  cal_event_2_title:
+    name: Calendar Event 2 Title
+    max: 255
+  cal_event_2_start:
+    name: Calendar Event 2 Start
+    max: 64
+  cal_event_3_title:
+    name: Calendar Event 3 Title
+    max: 255
+  cal_event_3_start:
+    name: Calendar Event 3 Start
+    max: 64
+  cal_event_4_title:
+    name: Calendar Event 4 Title
+    max: 255
+  cal_event_4_start:
+    name: Calendar Event 4 Start
+    max: 64
+  cal_event_5_title:
+    name: Calendar Event 5 Title
+    max: 255
+  cal_event_5_start:
+    name: Calendar Event 5 Start
+    max: 64
+
+# Template sensors expose input_text values as proper HA sensors for ESPHome to subscribe to
+template:
+  - sensor:
+      - name: "Day 1 Forecast Condition"
+        state: "{{ states('input_text.weather_forecast_day_1_condition') }}"
+        attributes:
+          temperature: "{{ states('input_text.weather_forecast_day_1_temperature') }}"
+          datetime: "{{ states('input_text.weather_forecast_day_1_datetime') }}"
+      - name: "Day 2 Forecast Condition"
+        state: "{{ states('input_text.weather_forecast_day_2_condition') }}"
+        attributes:
+          temperature: "{{ states('input_text.weather_forecast_day_2_temperature') }}"
+          datetime: "{{ states('input_text.weather_forecast_day_2_datetime') }}"
+      - name: "Day 3 Forecast Condition"
+        state: "{{ states('input_text.weather_forecast_day_3_condition') }}"
+        attributes:
+          temperature: "{{ states('input_text.weather_forecast_day_3_temperature') }}"
+          datetime: "{{ states('input_text.weather_forecast_day_3_datetime') }}"
+      - name: "Day 4 Forecast Condition"
+        state: "{{ states('input_text.weather_forecast_day_4_condition') }}"
+        attributes:
+          temperature: "{{ states('input_text.weather_forecast_day_4_temperature') }}"
+          datetime: "{{ states('input_text.weather_forecast_day_4_datetime') }}"
+      - name: "Day 5 Forecast Condition"
+        state: "{{ states('input_text.weather_forecast_day_5_condition') }}"
+        attributes:
+          temperature: "{{ states('input_text.weather_forecast_day_5_temperature') }}"
+          datetime: "{{ states('input_text.weather_forecast_day_5_datetime') }}"
+      - name: "Calendar Event 2 Title"
+        unique_id: cal_event_2_title
+        state: "{{ states('input_text.cal_event_2_title') }}"
+      - name: "Calendar Event 2 Start"
+        unique_id: cal_event_2_start
+        state: "{{ states('input_text.cal_event_2_start') }}"
+      - name: "Calendar Event 3 Title"
+        unique_id: cal_event_3_title
+        state: "{{ states('input_text.cal_event_3_title') }}"
+      - name: "Calendar Event 3 Start"
+        unique_id: cal_event_3_start
+        state: "{{ states('input_text.cal_event_3_start') }}"
+      - name: "Calendar Event 4 Title"
+        unique_id: cal_event_4_title
+        state: "{{ states('input_text.cal_event_4_title') }}"
+      - name: "Calendar Event 4 Start"
+        unique_id: cal_event_4_start
+        state: "{{ states('input_text.cal_event_4_start') }}"
+      - name: "Calendar Event 5 Title"
+        unique_id: cal_event_5_title
+        state: "{{ states('input_text.cal_event_5_title') }}"
+      - name: "Calendar Event 5 Start"
+        unique_id: cal_event_5_start
+        state: "{{ states('input_text.cal_event_5_start') }}"
