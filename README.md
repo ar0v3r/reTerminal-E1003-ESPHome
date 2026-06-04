@@ -1,4 +1,4 @@
-# reTerminal E1003 – ESPHome Calendar Dashboard
+# reTerminal E1003 – ESPHome Calendar Dashboard - Power Savings Optimized
 
 A Google Calendar dashboard for the [Seeed reTerminal E1003](https://www.seeedstudio.com/reTerminal-E1003-p-6731.html) — a great all-in-one 10.3" e-ink display with a built-in ESP32-S3, 3000mAh battery, SHT4x sensor, and physical buttons. This project is intended as a starting point for running ESPHome on the E1003, and is designed to be straightforward to adapt to your own calendar and data sources.
 
@@ -12,7 +12,8 @@ This project was built with inspiration from several community projects (credite
 - 2-day weather forecast with MDI weather icons
 - SHT4x temperature and humidity
 - Battery voltage and percentage (calibrated curve)
-- Deep sleep between updates — measured sleep current below BM235 µA floor
+- Deep sleep between updates — measured sleep current <100 µA
+- Estimate 6-8 month battery life
 - Wake on button press (GPIO4, center white button)
 - OTA-friendly "Hold Awake" button in Home Assistant
 
