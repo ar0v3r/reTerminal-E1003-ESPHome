@@ -126,7 +126,7 @@ Initial flash via USB-C. Subsequent OTA updates: wake the device via the center 
 
 ## Sleep interval
 
-`sleep_duration` is set to `4h`. Adjust to taste — `6h` is a reasonable default for a wall calendar.
+`sleep_duration` is set to `4h`. Adjust to taste — `6h` to '12h' will get you closer to 300+ days/single charge.
 
 ## License
 
