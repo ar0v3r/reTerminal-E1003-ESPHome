@@ -1,4 +1,4 @@
-# reTerminal E1003 – ESPHome Dashboard - Power Savings Optimized
+# reTerminal E1003 – ESPHome Dashboard – Power Savings Optimized
 
 A Google Calendar dashboard for the [Seeed reTerminal E1003](https://www.seeedstudio.com/reTerminal-E1003-p-6731.html) — a great all-in-one 10.3" e-ink display with a built-in ESP32-S3, 3000mAh battery, SHT4x sensor, and physical buttons. This project is intended as a starting point for running ESPHome on the E1003, and is designed to be straightforward to adapt to your own calendar and data sources.
 
