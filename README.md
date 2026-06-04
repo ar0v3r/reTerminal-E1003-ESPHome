@@ -13,7 +13,7 @@ This project was built with inspiration from several community projects (credite
 - SHT4x temperature and humidity
 - Battery voltage and percentage (calibrated curve)
 - Deep sleep between updates — measured sleep current <100 µA
-- Estimate 6-8 month battery life
+- Estimated 6-8 month battery life
 - Wake on button press (GPIO4, center white button)
 - OTA-friendly "Hold Awake" button in Home Assistant
 
