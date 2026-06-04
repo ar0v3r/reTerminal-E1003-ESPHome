@@ -4,9 +4,6 @@
 
 python_script:
 
-# Weather forecast template sensors (populated by the "Weather Updating" automation)
-template: !include Forecast.yaml   # or inline the template block below your existing templates
-
 # input_text helpers — bridge calendar/weather data to ESPHome sensors
 input_text:
   # Weather forecast
