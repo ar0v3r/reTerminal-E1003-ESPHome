@@ -1,6 +1,6 @@
 # reTerminal E1003 – ESPHome Dashboard – Power Savings Optimized
 
-A Google Calendar dashboard for the [Seeed reTerminal E1003](https://www.seeedstudio.com/reTerminal-E1003-p-6731.html) — a great all-in-one 10.3" e-ink display with a built-in ESP32-S3, 3000mAh battery, SHT4x sensor, and physical buttons. This project is intended as a starting point for running ESPHome on the E1003, and is designed to be straightforward to adapt to your own calendar and data sources.
+A Google Calendar dashboard for the [Seeed reTerminal E1003](https://www.seeedstudio.com/reTerminal-E1003-p-6731.html) - a great all-in-one 10.3" e-ink display with a built-in ESP32-S3, 3000mAh battery, SHT4x sensor, and physical buttons. This project is intended as a starting point for running ESPHome on the E1003, and is designed to be straightforward to adapt to your own calendar and data sources.
 
 The primary motivation for publishing this project is to document deep sleep power optimizations that dramatically extend battery life. Out of the box, a stock ESPHome setup on this device draws ~185mA during the awake idle state and 4–5mA during deep sleep — resulting in a real-world battery life of roughly 20–30 days. Through iterative testing, the deep sleep current was reduced to below the detection limit of my standard multimeter probe, with the goal of approaching Seeed's advertised upper battery life limit of 6 months.
 
@@ -36,7 +36,7 @@ This project was built with inspiration from several community projects (credite
 
 Mounts to a fridge (or any steel surface) using:
 
-- 4× [DIYMAG Heavy Duty Cup Magnets, 60LBS, 0.98" with countersunk hole](https://www.amazon.com/s?k=DIYMAG+Heavy+Duty+Magnets+60LBS+Neodymium+Round+Base+Cup+Countersunk+0.98+Inch) — screwed into the rear of the device enclosure
+- 4× [DIYMAG Heavy Duty Cup Magnets, 60LBS, 0.98" with countersunk hole](https://www.amazon.com/s?k=DIYMAG+Heavy+Duty+Magnets+60LBS+Neodymium+Round+Base+Cup+Countersunk+0.98+Inch) screwed into the rear of the device enclosure
 - 4× M3×10mm screws
 
 ### Key GPIO assignments (schematic v1.0)
