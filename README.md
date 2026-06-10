@@ -2,7 +2,7 @@
 
 A Google Calendar dashboard for the [Seeed reTerminal E1003](https://www.seeedstudio.com/reTerminal-E1003-p-6731.html) — a great all-in-one 10.3" e-ink display with a built-in ESP32-S3, 3000mAh battery, SHT4x sensor, and physical buttons. This project is intended as a starting point for running ESPHome on the E1003, and is designed to be straightforward to adapt to your own calendar and data sources.
 
-The primary motivation for publishing this project is to document deep sleep power optimizations that dramatically extend battery life. Out of the box, a stock ESPHome setup on this device draws ~185mA during the awake idle state and 4–5mA during deep sleep — resulting in a real-world battery life of roughly 20–30 days. Through iterative testing, the deep sleep current was reduced to below the detection limit of a BM235 multimeter, with the goal of approaching Seeed's advertised upper battery life limit of 6 months (potentially more, depending on your update interval).
+The primary motivation for publishing this project is to document deep sleep power optimizations that dramatically extend battery life. Out of the box, a stock ESPHome setup on this device draws ~185mA during the awake idle state and 4–5mA during deep sleep — resulting in a real-world battery life of roughly 20–30 days. Through iterative testing, the deep sleep current was reduced to below the detection limit of my standard multimeter probe, with the goal of approaching Seeed's advertised upper battery life limit of 6 months.
 
 This project was built with inspiration from several community projects (credited below) and optimized through active testing with Claude. If you prefer not to use AI-assisted code, the key power-related findings are documented in the [Power](#power) section below and can be adopted independently into any ESPHome configuration for this device.
 
@@ -13,7 +13,7 @@ This project was built with inspiration from several community projects (credite
 - SHT4x temperature and humidity
 - Battery voltage and percentage (calibrated curve)
 - Deep sleep between updates — measured sleep current <100 µA
-- Estimated 6-8 month battery life
+- Estimated 3-6 month battery life
 - Wake on button press (GPIO4, center white button)
 - OTA-friendly "Hold Awake" button in Home Assistant
 
@@ -60,13 +60,15 @@ Mounts to a fridge (or any steel surface) using:
 
 **Sleep current:** below 100µA — undetectable with current measurement setup (BM235 multimeter reads 0.00 on both mA and µA ranges)  
 **Awake idle:** ~185mA; wake cycle ~20s  
-**4h interval estimated life:** ~6 months
+**4h interval estimated life:** ~3+ months
 
 The critical fix was using `gpio_hold_en()` + `gpio_deep_sleep_hold_en()` to latch GPIO states into the sleep domain. Without holds, bare `digitalWrite()` calls are silently discarded at sleep entry on the ESP32-S3, leaving GPIO39 (SD) and GPIO48 (touch) floating HIGH and burning ~4.95mA.
 
 GPIO16 (USER_LED) is intentionally **excluded** from the hold set — latching it LOW drives the green LED on during sleep via the Q4 transistor.
 
 `ext1 ANY_LOW` is used for wake instead of `ext0` because `gpio_deep_sleep_hold_en()` breaks ext0 wake on the S3.
+
+There are further optimizations that could be investigated (ie TRMNL's PSRAM leakage workaround on their S3 board), a TPL5110 breakout could get the battery closer to 300 days likely.
 
 ## Files
 
@@ -126,7 +128,7 @@ Initial flash via USB-C. Subsequent OTA updates: wake the device via the center 
 
 ## Sleep interval
 
-`sleep_duration` is set to `4h`. Adjust to taste — `6h` to '12h' will get you closer to 300+ days/single charge.
+`sleep_duration` is set to `4h`. Adjust to taste — `6h` to '12h' can increase battery life significantly.
 
 ## License
 
