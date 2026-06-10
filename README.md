@@ -12,7 +12,7 @@ This project was built with inspiration from several community projects (credite
 - 2-day weather forecast with MDI weather icons
 - SHT4x temperature and humidity
 - Battery voltage and percentage (calibrated curve)
-- Deep sleep between updates — measured sleep current <100 µA
+- Deep sleep between updates = measured sleep current <100 µA
 - Estimated 3-6 month battery life
 - Wake on button press (GPIO4, center white button)
 - OTA-friendly "Hold Awake" button in Home Assistant
@@ -58,7 +58,7 @@ Mounts to a fridge (or any steel surface) using:
 
 ## Power
 
-**Sleep current:** below 100µA — undetectable with current measurement setup (BM235 multimeter reads 0.00 on both mA and µA ranges)  
+**Sleep current:** below 100µA, undetectable with current measurement setup (BM235 multimeter reads 0.00 on both mA and µA ranges)  
 **Awake idle:** ~185mA; wake cycle ~20s  
 **4h interval estimated life:** ~3+ months
 
@@ -109,8 +109,8 @@ Temperature values are stored as pre-formatted strings (e.g. `"72°F"`) directly
 
 Add the two automations from `automations.yaml` to your HA automations (via the UI or by merging into `automations.yaml`):
 
-- **Weather Updating** — fetches daily forecast every 2 hours and on HA start, calls the python script to populate the `input_text` helpers
-- **Sync Calendar Events to ESPHome** — polls your calendar every 15 minutes and writes events 2–5 into `input_text` helpers (event 1 comes directly from the calendar entity attribute)
+- **Weather Updating** = fetches daily forecast every 2 hours and on HA start, calls the python script to populate the `input_text` helpers
+- **Sync Calendar Events to ESPHome** = polls your calendar every 15 minutes and writes events 2–5 into `input_text` helpers (event 1 comes directly from the calendar entity attribute)
 
 ### 6. Customize entity IDs
 
@@ -128,7 +128,7 @@ Initial flash via USB-C. Subsequent OTA updates: wake the device via the center 
 
 ## Sleep interval
 
-`sleep_duration` is set to `4h`. Adjust to taste — `6h` to '12h' can increase battery life significantly.
+`sleep_duration` is set to `4h`. Adjust to taste, `6h` to '12h' can increase battery life significantly.
 
 ## License
 
